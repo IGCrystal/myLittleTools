@@ -1,0 +1,16 @@
+{
+  "tasks": [
+    {
+      "name": "项目A多源多目标同步",
+      "sources": [
+        "C:\\Users\\27493\\Videos\\maimai"
+      ],
+      "targets": [
+        "D:\\OneDrive - Larch2352\\VD\\maimai"
+      ],
+      "exclude": ["*.tmp", "node_modules/**"],
+      "workers": 4,
+      "log": "logs/A_sync.log"
+    }
+  ]
+}
