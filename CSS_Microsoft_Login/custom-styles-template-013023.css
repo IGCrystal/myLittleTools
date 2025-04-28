@@ -1,0 +1,133 @@
+body
+{
+    /* 整个页面的样式 */
+    background: linear-gradient(135deg, rgb(223, 242, 253), rgb(134, 219, 255), rgb(0, 174, 255));
+    background-size: 400% 400%;
+    animation: gradientAnimation 10s ease infinite;
+    font-family: '微软雅黑', sans-serif;
+    color: rgba(60, 60, 67, 1);
+    margin: 0;
+}
+
+/* 渐变背景动画 */
+@keyframes gradientAnimation {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+}
+
+.ext-background-image
+{
+    /* 默认灯箱模板中包含背景图片的容器样式 */
+    background-image: url('https://api.wenturc.com/');
+    background-size: cover;
+    background-position: center;
+}
+
+.ext-background-overlay
+{
+    /* 为背景图片添加不透明度的背景遮罩样式 */
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.ext-sign-in-box
+{
+    /* 登录框容器的样式，调整为左对齐 */
+    background: #fff;
+    backdrop-filter: blur(15px);
+    padding: 40px;
+    border: 2px solid rgba(51, 181, 255, 0.314);
+    border-radius: 15px;
+    text-align: left;  /* 从居中改为左对齐 */
+    max-width: 450px;
+    width: 100%;
+}
+
+.ext-title
+{
+    /* 标题文本的样式 */
+    font-size: 20px;
+    font-weight: bold;
+    color: rgba(60, 60, 67, 1);
+    margin-bottom: 20px;
+    /* 如有需要可取消 margin-right:auto 保证左对齐 */
+    margin-right: 0;
+}
+
+.ext-input.ext-text-box
+{
+    /* 文本框的样式 */
+    width: 100%;
+    padding: 15px;
+    margin: 15px 0;
+    border: 2px solid rgba(51, 181, 255, 0.314);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.2);
+    color: rgba(60, 60, 67, 1);
+    font-size: 16px;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+.ext-button.ext-primary
+{
+    /* 主要按钮的样式 */
+    background-color: rgba(0, 163, 255, 1);
+    color: #fff;
+    font-weight: bold;
+    padding: 12px 25px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    width: 100%;
+}
+
+.ext-button.ext-primary:hover
+{
+    /* 鼠标悬停在主要按钮上时的样式 */
+    background-color: rgba(0, 180, 255, 1);
+}
+
+.ext-button.ext-secondary
+{
+    /* 次要按钮的样式 */
+    background-color: rgb(151, 217, 255);
+    color: #006e96;
+    font-weight: bold;
+    padding: 12px 25px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    width: 100%;
+}
+
+.ext-button.ext-secondary:hover
+{
+    /* 鼠标悬停在次要按钮上时的样式 */
+    background-color: rgba(0, 140, 201, 0.781);
+}
+
+.ext-footer
+{
+    /* 页面底部页脚的样式 */
+    color: rgba(0, 163, 255, 1);
+    font-size: 12px;
+    text-align: center;
+    margin-top: 20px;
+}
+
+.ext-footer-links
+{
+    /* 页面底部页脚链接的样式 */
+    color: rgba(0, 163, 255, 1);
+    text-decoration: none;
+    transition: all 0.3s ease;
+}

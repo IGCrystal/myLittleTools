@@ -1,0 +1,126 @@
+<mjml>
+  <mj-body>
+
+    <mj-raw>
+      <!-- Company Header -->
+    </mj-raw>
+
+    <mj-section background-color="#c9f5ff" border-radius="10px">
+      <mj-column>
+        <mj-image width="500px" src="https://docs.wenturc.com/logo_WUc_Docs.png"></mj-image>
+      </mj-column>
+    </mj-section>
+
+    <mj-raw>
+      <!-- Image Header -->
+    </mj-raw>
+
+    <mj-section background-color="#fff" border-radius="10px">
+      <mj-column width="500px">
+      </mj-column>
+    </mj-section>
+
+    <mj-section background-url="http://api.wenturc.com" background-size="cover" background-repeat="no-repeat" border-radius="10px">
+      <mj-column width="600px">
+        <mj-image width="500px" src="https://docs.wenturc.com/logo_WUc_Docs_assets.png"></mj-image>
+      </mj-column>
+    </mj-section>
+    
+    <mj-section background-color="#fff" border-radius="10px">
+      <mj-column width="500px">
+      </mj-column>
+    </mj-section>
+    
+    <mj-section background-color="#e7f4f7" border-radius="10px">
+      <mj-column width="400px">
+        <mj-text font-style="italic" font-size="20px" font-family="Helvetica Neue" color="#626262">关于 Yukira Crystal</mj-text>
+        <mj-text color="#525252">浑身是一具动态的淡蓝色。发梢的冰蓝在行走时流淌成微型冰川。可爱的麻花辫总在转身时扬起细雪，银雪花发夹上的水晶折射出66度的晨光。风掠过她雪纺质感的刘海，冬日湖面一道冰裂的纹路在眉骨下生长。那冰蓝色瞳孔倒映出柔和的光芒，暴风雪在那光芒下柔化成团团柳絮。</mj-text>
+        <mj-button background-color="#009afa" href="https://docs.wenturc.com/" font-size="15px" border-radius="7px">Learn more</mj-button>
+      </mj-column>
+    </mj-section>
+    
+    <mj-section background-color="#fff" border-radius="10px">
+      
+      <mj-raw>
+        <!-- Left image -->
+      </mj-raw>
+      
+      <mj-column width="200px">
+        <mj-image width="100px" src="https://docs.wenturc.com/logo-O2.jpg" border-radius="10px"></mj-image>
+      </mj-column>
+      
+      <mj-column width="200px">
+        <mj-text color="#525252">这是一封欢迎邮件。</mj-text>
+        <mj-text color="#525252">Welcome To Here!</mj-text>
+        <mj-text color="#525252">We think you’re gonna like it here.</mj-text>
+      </mj-column>
+    </mj-section>
+
+    <mj-raw>
+      <!-- Side image -->
+    </mj-raw>
+
+    <mj-section background-color="#e7f4f7" border-radius="10px">
+      <mj-raw>
+        <!-- Left image -->
+      </mj-raw>
+
+      <mj-column>
+        <mj-image width="200px" src="https://api.wenturc.com/" border-radius="10px"></mj-image>
+      </mj-column>
+
+      <mj-raw>
+        <!-- right paragraph -->
+      </mj-raw>
+
+      <mj-column>
+        <mj-text font-style="italic" font-size="20px" font-family="Helvetica Neue" color="#626262">Where are you from?</mj-text>
+        <mj-text color="#525252">她喜欢当艺术家的感觉。她的画布由广告牌的光污染渲染。当睫毛抖落的冰屑在亚克力板上，蚀刻出一个个消逝的星座，而碳酸饮料海报里的气泡正逆着重力上升，每个泡沫内部都蜷缩着1996年某场暴雪的切片，切片里正有着新的艺术作品诞生。清晨，清洁工惊叹于这精致的冰雕群像，却不知那是光缆中疲惫数据流的固态显影。</mj-text>
+      </mj-column>
+
+    </mj-section>
+    
+    <mj-section background-color="white">
+      <mj-raw>
+        <!-- Left image -->
+      </mj-raw>
+
+      <mj-column>
+        <mj-image width="200px" src="https://docs.wenturc.com/img/154.jpg" border-radius="10px"></mj-image>
+      </mj-column>
+
+      <mj-raw>
+        <!-- right paragraph -->
+      </mj-raw>
+
+      <mj-column>
+        <mj-text font-style="italic" font-size="20px" font-family="Helvetica Neue" color="#626262">Find amazing places</mj-text>
+        <mj-text color="#525252">最后一班电车驶过时，街角监控器记录到奇异的折射现象：少女的身影在镜头里始终呈现二十度偏转，如同光线穿过棱柱后诚实的弯曲。到了第二天，晨报的角落刊登了一则浪漫的误读——昨夜全市玻璃窗同时绽放冰花，仿佛春天在练习倒着生长。</mj-text>
+      </mj-column>
+
+    </mj-section>
+
+    <mj-raw>
+      <!-- Icons -->
+    </mj-raw>
+
+    <mj-section background-color="#e7f4f7" border-radius="10px">
+      <mj-column>
+        <mj-image width="50px" src="https://docs.wenturc.com/logo.svg"></mj-image>
+      </mj-column>
+
+      <mj-column width="500px">
+        <mj-image width="300px" src="https://docs.wenturc.com/logo_WUc_Docs.png"></mj-image>
+      </mj-column>
+    </mj-section>
+
+    <mj-section background-color="#fff" border-radius="10px">
+      <mj-column>
+        <mj-text font-style="italic" font-size="10px" color="#626262">路很长，梦仍在</mj-text>
+        <mj-text font-style="italic" font-size="10px" color="#626262">© 2024 - present&emsp;WentUrc&emsp;IGCyukira&emsp;冰苷晶&emsp;</mj-text>
+        <mj-text font-style="italic" font-size="10px" color="#626262">All Rights Reserved.</mj-text>
+      </mj-column>
+    </mj-section>
+    
+  </mj-body>
+</mjml>
