@@ -1,66 +1,75 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import sys
-import time
+import fnmatch
+import hashlib
 import json
 import logging
-import fnmatch
-import threading
-import signal
-import tempfile
-import shutil
+import os
 import platform
+import random
+import shutil
+import signal
+import sys
+import tempfile
+import threading
+import time
+from logging.handlers import RotatingFileHandler
+from multiprocessing import Process
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
-# —— Observer 选择（macOS 用轮询，其他系统用默认）喵♡～
-if platform.system() == 'Darwin':
-    from watchdog.observers.polling import PollingObserver as ObserverClass
-else:
-    from watchdog.observers import Observer as ObserverClass
+# —— 猫娘尾巴 ——
+CAT_TAILS = ["喵～", "喵♡～", "呜喵～", "噜～"]
+def random_tail() -> str:
+    return random.choice(CAT_TAILS)
 
-# —— 配置 & 去抖延迟（秒）喵♡～
+# —— 8. 资源限制 ——
+try:
+    import resource
+    resource.setrlimit(resource.RLIMIT_AS, (1 << 30, 1 << 30))
+    resource.setrlimit(resource.RLIMIT_CPU, (3600, 3600))
+except Exception:
+    pass
+
 CFG_PATH = Path("config.json")
 DEBOUNCE = 1.0
+HEARTBEAT_INTERVAL = 3600
+RESTART_DELAY = 5
 
-# —— 自定义日志格式化器 —— 喵♡～
-class SimpleFormatter(logging.Formatter):
+# —— 猫娘日志格式 + 轮转 ——
+class CatFormatter(logging.Formatter):
     def format(self, record):
         ct = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
-        lvl = record.levelname
-        msg = record.getMessage()
-        return f"{ct} | {lvl:^5} | {msg}"
+        return f"{ct} | {record.levelname:^5} | {record.getMessage()} {random_tail()}"
 
-# —— 读取 & 校验配置 —— 喵♡～
-if not CFG_PATH.exists():
-    print(f"配置文件未找到：{CFG_PATH}，请先创建喵♡～")
-    sys.exit(1)
+def setup_logger(name: str, logfile: Path) -> logging.Logger:
+    logfile.parent.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if not logger.handlers:
+        fmt = CatFormatter()
+        fh = RotatingFileHandler(
+            logfile, maxBytes=10*1024*1024, backupCount=5, encoding="utf-8"
+        )
+        fh.setFormatter(fmt)
+        sh = logging.StreamHandler()
+        sh.setFormatter(fmt)
+        logger.addHandler(fh)
+        logger.addHandler(sh)
+    return logger
 
-cfg = json.loads(CFG_PATH.read_text(encoding='utf-8'))
-tasks_cfg = cfg.get("tasks", [])
-if not isinstance(tasks_cfg, list) or not tasks_cfg:
-    print("config.json 中 tasks 应为非空列表喵♡～")
-    sys.exit(1)
-
-# —— 全局停止标志 & 信号处理 —— 喵♡～
-stop_event = threading.Event()
-def _handle(signum, frame):
-    stop_event.set()
-    print("\n收到退出信号～准备停止喵♡～")
-for sig in ("SIGINT", "SIGTERM"):
-    if hasattr(signal, sig):
-        signal.signal(getattr(signal, sig), _handle)
-
-# —— 重试装饰器 —— 喵♡～
 def retry(times=3, delay=0.5):
     def deco(fn):
         def wrapper(*a, **kw):
             for i in range(times):
                 try:
                     return fn(*a, **kw)
-                except Exception as e:
+                except Exception:
                     if i < times - 1:
                         time.sleep(delay)
                     else:
@@ -68,63 +77,51 @@ def retry(times=3, delay=0.5):
         return wrapper
     return deco
 
-# —— 同步任务类 —— 喵♡～
+def compute_hash(path: Path, algo="sha256", chunk_size=8192) -> str:
+    h = hashlib.new(algo)
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
 class SyncTask:
-    def __init__(self, cfg):
+    def __init__(self, cfg: dict):
         self.name    = cfg.get("name", "sync_task")
-        # sources/targets 支持单条或多条
-        self.sources = [Path(p) for p in (cfg.get("sources") or [cfg.get("source")])]
-        self.targets = [Path(p) for p in (cfg.get("targets") or [cfg.get("target")])]
+        srcs = cfg.get("sources") or [cfg.get("source")]
+        tgts = cfg.get("targets") or [cfg.get("target")]
+        self.sources = [Path(p) for p in srcs if p]
+        self.targets = [Path(p) for p in tgts if p]
         self.exclude = cfg.get("exclude", [])
         self.workers = cfg.get("workers", 4)
         self.logfile = Path(cfg.get("log", f"logs/{self.name}.log"))
+
+        # 同步控制
+        self._lock            = threading.Lock()
+        self._timer           = None
+        self._pending         = False
+        self._paths_lock      = threading.Lock()
+        self._pending_paths   = set()
+        self._counter_lock    = threading.Lock()
+        self._copy_count      = 0
+        self._delete_count    = 0
+
+        self.logger = setup_logger(self.name, self.logfile)
         self._validate()
-        self._setup_logger()
-        self._lock = threading.Lock()
-        self._timer = None
+        self.logger.info(f"🟢 启动任务「{self.name}」")
 
     def _validate(self):
-        if not self.sources or not self.targets:
-            raise ValueError(f"任务「{self.name}」需至少一个源和一个目标喵♡～")
-        # 检查源目录存在
+        if not (self.sources and self.targets):
+            raise ValueError("需至少一个源和一个目标")
         for s in self.sources:
             if not s.is_dir():
-                raise ValueError(f"源目录不存在：{s} 喵♡～")
-        # 检查目标目录可写
+                raise ValueError(f"源不存在：{s}")
         for t in self.targets:
             t.mkdir(parents=True, exist_ok=True)
             test = t / f".sync_test_{int(time.time())}"
             try:
-                test.write_text("ok")
-                test.unlink()
+                test.write_text("ok"); test.unlink()
             except Exception as e:
-                raise ValueError(f"目标不可写：{t}；{e} 喵♡～")
-        # 如果多源多目标，长度要一致
-        if len(self.sources) > 1 and len(self.targets) > 1 and len(self.sources) != len(self.targets):
-            raise ValueError("源与目标数量不匹配喵♡～")
-
-    def _setup_logger(self):
-        self.logfile.parent.mkdir(parents=True, exist_ok=True)
-        self.logger = logging.getLogger(self.name)
-        self.logger.setLevel(logging.INFO)
-        if not self.logger.handlers:
-            fmt = SimpleFormatter()
-            fh  = logging.FileHandler(self.logfile, encoding='utf-8')
-            sh  = logging.StreamHandler()
-            fh.setFormatter(fmt); sh.setFormatter(fmt)
-            self.logger.addHandler(fh); self.logger.addHandler(sh)
-        # 优雅打印启动信息
-        srcs = ", ".join(str(p) for p in self.sources)
-        tgts = ", ".join(str(p) for p in self.targets)
-        self.logger.info(f"🟢 启动任务「{self.name}」\n"
-                         f"    Sources: {srcs}\n"
-                         f"    Targets: {tgts}\n"
-                         f"    Exclude: {self.exclude}\n"
-                         f"    Workers: {self.workers}")
-
-    def should_exclude(self, path: Path, base: Path):
-        rel = path.relative_to(base).as_posix()
-        return any(fnmatch.fnmatch(rel, pat) for pat in self.exclude)
+                raise ValueError(f"目标不可写：{t}；{e}")
 
     def _pairs(self):
         if len(self.sources) == len(self.targets):
@@ -133,14 +130,40 @@ class SyncTask:
             return [(self.sources[0], t) for t in self.targets]
         return [(s, self.targets[0]) for s in self.sources]
 
+    def should_exclude(self, path: Path, base: Path) -> bool:
+        rel = path.relative_to(base).as_posix()
+        return any(fnmatch.fnmatch(rel, pat) for pat in self.exclude)
+
+    def cleanup_tmp_files(self):
+        for _, t_base in self._pairs():
+            for tmp in t_base.rglob("*.sync_tmp*"):
+                try:
+                    tmp.unlink()
+                    self.logger.info(f"🧹 清理临时文件：{tmp}")
+                except: pass
+
     @retry(times=3, delay=0.3)
     def _atomic_copy(self, src: Path, dst: Path):
+        if src.is_symlink():
+            target = os.readlink(src)
+            try: dst.unlink()
+            except: pass
+            os.symlink(target, dst)
+            try: shutil.copystat(src, dst, follow_symlinks=False)
+            except: pass
+            return
         dst.parent.mkdir(parents=True, exist_ok=True)
-        # 在目标目录下创建临时文件以保证原子性
-        with tempfile.NamedTemporaryFile(dir=dst.parent, delete=False) as tmp:
-            tmp.write(src.read_bytes())
-            tmp.flush()
-        Path(tmp.name).replace(dst)
+        tmp = tempfile.NamedTemporaryFile(dir=dst.parent, delete=False)
+        try:
+            with src.open("rb") as fsrc, tmp:
+                shutil.copyfileobj(fsrc, tmp); tmp.flush()
+            Path(tmp.name).replace(dst)
+            try: shutil.copystat(src, dst, follow_symlinks=False)
+            except: pass
+        finally:
+            if tmp and Path(tmp.name).exists():
+                try: Path(tmp.name).unlink()
+                except: pass
 
     @retry(times=3, delay=0.3)
     def _safe_delete(self, path: Path):
@@ -149,73 +172,204 @@ class SyncTask:
         else:
             path.unlink()
 
-    def gather(self):
-        to_copy, to_delete = [], []
-        for s_base, t_base in self._pairs():
-            # 遍历源：新增/更新
-            for src in s_base.rglob("*"):
-                if src.is_file() and not self.should_exclude(src, s_base):
-                    dst = t_base / src.relative_to(s_base)
-                    if not dst.exists() or src.stat().st_mtime > dst.stat().st_mtime:
-                        to_copy.append((src, dst))
-            # 遍历目标：删除多余
-            for dst in t_base.rglob("*"):
-                rel = dst.relative_to(t_base)
-                src = s_base / rel
-                if not src.exists():
-                    to_delete.append(dst)
-        return to_copy, to_delete
+    def _wrapped_copy(self, src, dst, sem):
+        try:
+            self._atomic_copy(src, dst)
+            with self._counter_lock:
+                self._copy_count += 1
+            self.logger.info(f"📄 复制: {src} → {dst}")
+        finally:
+            sem.release()
+
+    def _wrapped_delete(self, path, sem):
+        try:
+            self._safe_delete(path)
+            with self._counter_lock:
+                self._delete_count += 1
+            self.logger.info(f"🗑 删除: {path}")
+        finally:
+            sem.release()
 
     def sync(self):
-        # 同步锁，避免重复触发
+        # 批量变动汇总
+        with self._paths_lock:
+            changed = list(self._pending_paths)
+            self._pending_paths.clear()
+        if changed:
+            txt = "; ".join(str(p) for p in changed)
+            self.logger.info(f"✨ 检测到变动 {len(changed)} 条: {txt}")
+
         if not self._lock.acquire(False):
+            self._pending = True
             return
+
+        with self._counter_lock:
+            self._copy_count   = 0
+            self._delete_count = 0
+
+        start = time.time()
+        self.logger.info("🕒 开始同步")
+        sem = threading.Semaphore(self.workers * 2)
         try:
-            copies, deletes = self.gather()
             with ThreadPoolExecutor(max_workers=self.workers) as pool:
-                futures = [pool.submit(self._atomic_copy, s, d) for s, d in copies] + \
-                          [pool.submit(self._safe_delete, p) for p in deletes]
-                for _ in as_completed(futures):
-                    pass
-            # 只有有变动时才输出✅，否则静默
-            if copies or deletes:
-                self.logger.info(f"✅ 同步完成：复制 {len(copies)}，删除 {len(deletes)}")
+                for s_base, t_base in self._pairs():
+                    for src in s_base.rglob("*"):
+                        try:
+                            if (src.is_file()
+                                and not self.should_exclude(src, s_base)):
+                                dst = t_base / src.relative_to(s_base)
+                                need = False
+                                if not dst.exists():
+                                    need = True
+                                else:
+                                    if src.stat().st_mtime > dst.stat().st_mtime:
+                                        if compute_hash(src) != compute_hash(dst):
+                                            need = True
+                                if need:
+                                    sem.acquire()
+                                    pool.submit(
+                                        self._wrapped_copy, src, dst, sem
+                                    )
+                        except: continue
+                    for dst in t_base.rglob("*"):
+                        try:
+                            rel = dst.relative_to(t_base).as_posix()
+                            if any(fnmatch.fnmatch(rel, pat)
+                                   for pat in self.exclude):
+                                continue
+                            src = s_base / rel
+                            if not src.exists():
+                                sem.acquire()
+                                pool.submit(
+                                    self._wrapped_delete, dst, sem
+                                )
+                        except: continue
+                pool.shutdown(wait=True)
+
+            elapsed = time.time() - start
+            self.logger.info(
+                f"✅ 同步完成：复制 {self._copy_count} 个，"
+                f"删除 {self._delete_count} 个，耗时 {elapsed:.2f}s"
+            )
         except Exception as e:
             self.logger.error(f"同步出错：{e}", exc_info=True)
         finally:
             self._lock.release()
+            if self._pending:
+                self._pending = False
+                self.sync()
 
     class Handler(FileSystemEventHandler):
         def __init__(self, task):
             self.task = task
+
         def on_any_event(self, event):
-            # 去抖：每次事件都重置定时器
+            with self.task._paths_lock:
+                self.task._pending_paths.add(Path(event.src_path))
+            self.task.sync()
             if self.task._timer and self.task._timer.is_alive():
                 self.task._timer.cancel()
-            self.task._timer = threading.Timer(DEBOUNCE, self.task.sync)
+            self.task._timer = threading.Timer(
+                DEBOUNCE, self.task.sync)
             self.task._timer.start()
 
+    def _heartbeat_loop(self):
+        while True:
+            time.sleep(HEARTBEAT_INTERVAL)
+            self.logger.info(f"🔄 心跳：任务「{self.name}」正常运行")
+
     def start(self):
-        self.sync()  # 首次全量同步
-        obs = ObserverClass()
+        self.cleanup_tmp_files()
+        self.sync()
+        threading.Thread(
+            target=self._heartbeat_loop, daemon=True
+        ).start()
+        obs_list = []
         for s in self.sources:
+            ObsCls = PollingObserver if (
+                platform.system() == "Darwin"
+            ) else Observer
+            obs = ObsCls()
             obs.schedule(self.Handler(self), str(s), recursive=True)
-        obs.start()
-        return obs
+            obs.start()
+            self.logger.info(f"👀 监听: {s}")
+            obs_list.append(obs)
+        return obs_list
 
-# —— 启动所有任务 & 主循环 —— 喵♡～
-observers = []
-for tcfg in tasks_cfg:
-    try:
-        task = SyncTask(tcfg)
-        observers.append(task.start())
-    except Exception as e:
-        print(f"任务「{tcfg.get('name','?')}」初始化失败：{e}")
+# —— 动态重载配置 ——
+tasks: list[SyncTask] = []
+observers: list = []
 
-try:
-    while not stop_event.is_set():
-        time.sleep(0.5)
-finally:
+class ConfigReloader(FileSystemEventHandler):
+    def __init__(self):
+        super().__init__()
+        self._timer = None
+
+    def on_modified(self, event):
+        if Path(event.src_path).resolve() == CFG_PATH.resolve():
+            if self._timer and self._timer.is_alive():
+                self._timer.cancel()
+            self._timer = threading.Timer(DEBOUNCE, reload_config)
+            self._timer.start()
+
+def reload_config():
+    logging.info("🔄 配置变更，重新加载任务")
     for o in observers:
         o.stop()
-    print("所有任务已优雅停止喵♡～")
+    for o in observers:
+        o.join()
+    observers.clear()
+    tasks.clear()
+    try:
+        cfg = json.loads(CFG_PATH.read_text(encoding="utf-8"))
+        for tcfg in cfg.get("tasks", []):
+            try:
+                task = SyncTask(tcfg)
+                tasks.append(task)
+                for o in task.start():
+                    observers.append(o)
+            except Exception as e:
+                logging.error(f"任务初始化失败：{e}")
+    except Exception as e:
+        logging.error(f"加载 config.json 失败：{e}")
+
+def sync_worker():
+    logger = logging.getLogger("sync_worker")
+    try:
+        cfg_obs = PollingObserver()
+        cfg_obs.schedule(ConfigReloader(), str(CFG_PATH.parent),
+                         recursive=False)
+        cfg_obs.start()
+        observers.append(cfg_obs)
+        reload_config()
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        logger.info("子进程收到退出信号，优雅退出")
+    finally:
+        for o in observers:
+            o.stop()
+        for o in observers:
+            o.join()
+
+def supervise():
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    handler = logging.StreamHandler()
+    handler.setFormatter(CatFormatter())
+    root_logger.addHandler(handler)
+    try:
+        while True:
+            p = Process(target=sync_worker, name="sync_worker")
+            p.start()
+            p.join()
+            root_logger.error(
+                f"🚨 子进程退出(code={p.exitcode})，{RESTART_DELAY}s 后重启"
+            )
+            time.sleep(RESTART_DELAY)
+    except KeyboardInterrupt:
+        root_logger.info("父进程收到退出信号，优雅退出")
+        sys.exit(0)
+
+if __name__ == "__main__":
+    supervise()
