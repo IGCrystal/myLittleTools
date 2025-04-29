@@ -6,8 +6,10 @@ merge_av.py —— 强化鲁棒性的 FFmpeg 合并脚本
   - 路径与扩展名校验
   - 磁盘空间检测
   - 超时执行与临时文件清理
-  - 默认输出 MP4（H.264 + AAC）
-  - 根据输出容器智能选用音/视频编码器
+  - 根据输出容器智能选用视频编码器：
+      · MP4 ➔ copy（原画）
+      · 其他 ➔ libx264 -crf 18 -preset slow（近无损）
+  - 音频统一转 AAC
   - 优雅处理所有异常与用户中断
 """
 
@@ -20,16 +22,16 @@ import atexit
 import signal
 from pathlib import Path
 
-# 支持的媒体扩展名（包含 .webm）
+# 支持的媒体扩展名
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".avi", ".flv", ".webm"}
 AUDIO_EXT = {".mp3", ".aac", ".wav", ".flac", ".ogg"}
 
-# 临时文件列表，用于退出时清理（目前暂无临时文件生成，可删或留）
+# 临时文件列表，用于退出时清理（目前无临时文件）
 _temp_files = []
 
 def setup_logging(verbose: bool):
     """
-    配置日志输出到标准输出，以避免干扰 input() 提示喵♡～
+    配置日志输出到标准输出，避免干扰 input() 提示。
     """
     level = logging.DEBUG if verbose else logging.INFO
     fmt = "%(asctime)s - %(levelname)s - %(message)s"
@@ -54,15 +56,11 @@ def ensure_disk_space(target_dir: Path, required_bytes: int = 100 * 1024 * 1024)
 
 def build_output_path(input_video: Path, output: str) -> Path:
     """
-    强制输出为 .mp4：
-      - 如果用户给的名字不是 .mp4 后缀，则改成 .mp4
-      - 无路径时放到原视频目录
+    强制输出为用户指定后缀（支持任意容器），
+    若用户未写目录，则放在原视频目录。
     """
     path = Path(output)
-    # 强制为 .mp4 后缀
-    if path.suffix.lower() != ".mp4":
-        path = path.with_suffix(".mp4")
-    # 只给了文件名，则放在原视频目录
+    # 只给了文件名且无目录
     if path.parent == Path("."):
         return input_video.resolve().parent / path.name
     return path
@@ -87,15 +85,18 @@ def merge_av(input_video: Path, input_audio: Path, output_video: Path,
     out_dir.mkdir(parents=True, exist_ok=True)
     ensure_disk_space(out_dir)
 
-    # 根据输出容器选择视频/音频编码器
+    # 根据输出后缀选择视频编码器
     suffix = output_video.suffix.lower()
-    if suffix == ".webm":
-        video_codec = "copy"
-        audio_codec = "libvorbis"
+    if suffix == ".mp4":
+        video_codec = "copy"  # 原画
     else:
-        # 默认输出 MP4：H.264 + AAC
-        video_codec = "libx264"
-        audio_codec = "aac"
+        video_codec = "libx264"  # 近无损编码
+    audio_codec = "aac"
+
+    # 如果是重新编码模式，加 CRF 与 preset
+    extra_v = []
+    if video_codec != "copy":
+        extra_v = ["-crf", "18", "-preset", "slow"]
 
     # 构造 FFmpeg 命令
     ff_cmd = [
@@ -103,7 +104,7 @@ def merge_av(input_video: Path, input_audio: Path, output_video: Path,
         "-y" if overwrite else "-n",
         "-i", str(input_video.resolve()),
         "-i", str(input_audio.resolve()),
-        "-c:v", video_codec,
+        "-c:v", video_codec, *extra_v,
         "-c:a", audio_codec,
         "-map", "0:v:0", "-map", "1:a:0",
         "-shortest",
@@ -128,7 +129,6 @@ def merge_av(input_video: Path, input_audio: Path, output_video: Path,
 def interactive_mode(force: bool, verbose: bool, timeout: int):
     """
     交互模式：支持路径引号自动剥离，合并后继续，输入 'q' 退出。
-    默认输出 MP4 喵♡～
     """
     print("进入交互模式（输入 q 或 quit 退出），喵~")
     try:
@@ -146,7 +146,7 @@ def interactive_mode(force: bool, verbose: bool, timeout: int):
             aud = Path(raw_aud.strip('"').strip("'"))
 
             base = vid.stem
-            default = f"{base}-已转换.mp4"
+            default = f"{base}-已转换{vid.suffix}"
             sys.stdout.flush()
             raw_out = input(f"输出文件名（默认 {default}，输入 q 退出）: ").strip()
             if raw_out.lower() in ('q', 'quit'):
